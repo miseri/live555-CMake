@@ -14,7 +14,7 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 **********/
 // "liveMedia"
-// Copyright (c) 1996-2014 Live Networks, Inc.  All rights reserved.
+// Copyright (c) 1996-2016 Live Networks, Inc.  All rights reserved.
 // A class that encapsulates a Matroska file.
 // Implementation
 
@@ -31,6 +31,7 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 #include <H264VideoRTPSink.hh>
 #include <H265VideoRTPSink.hh>
 #include <VP8VideoRTPSink.hh>
+#include <VP9VideoRTPSink.hh>
 #include <TheoraVideoRTPSink.hh>
 #include <T140TextRTPSink.hh>
 
@@ -283,6 +284,8 @@ FramedSource* MatroskaFile
       ++numFiltersInFrontOfTrack;
     } else if (strcmp(track->mimeType, "video/VP8") == 0) {
       estBitrate = 500;
+    } else if (strcmp(track->mimeType, "video/VP9") == 0) {
+      estBitrate = 500;
     } else if (strcmp(track->mimeType, "video/THEORA") == 0) {
       estBitrate = 500;
     } else if (strcmp(track->mimeType, "text/T140") == 0) {
@@ -306,7 +309,9 @@ RTPSink* MatroskaFile
     MatroskaTrack* track = lookup(trackNumber);
     if (track == NULL) break;
 
-    if (strcmp(track->mimeType, "audio/MPEG") == 0) {
+    if (strcmp(track->mimeType, "audio/L16") == 0) {
+      result = SimpleRTPSink::createNew(envir(), rtpGroupsock,rtpPayloadTypeIfDynamic, track->samplingFrequency, "audio", "L16", track->numChannels);
+    } else if (strcmp(track->mimeType, "audio/MPEG") == 0) {
       result = MPEG1or2AudioRTPSink::createNew(envir(), rtpGroupsock);
     } else if (strcmp(track->mimeType, "audio/AAC") == 0) {
       // The Matroska file's 'Codec Private' data is assumed to be the AAC configuration
@@ -434,8 +439,8 @@ RTPSink* MatroskaFile
       delete[] identificationHeader; delete[] commentHeader; delete[] setupHeader;
     } else if (strcmp(track->mimeType, "video/H264") == 0) {
       // Use our track's 'Codec Private' data: Bytes 5 and beyond contain SPS and PPSs:
-      u_int8_t* SPS = NULL; unsigned SPSSize = NULL;
-      u_int8_t* PPS = NULL; unsigned PPSSize = NULL;
+      u_int8_t* SPS = NULL; unsigned SPSSize = 0;
+      u_int8_t* PPS = NULL; unsigned PPSSize = 0;
       u_int8_t* SPSandPPSBytes = NULL; unsigned numSPSandPPSBytes = 0;
 
       do {
@@ -486,9 +491,9 @@ RTPSink* MatroskaFile
 
       delete[] SPS; delete[] PPS;
     } else if (strcmp(track->mimeType, "video/H265") == 0) {
-      u_int8_t* VPS = NULL; unsigned VPSSize = NULL;
-      u_int8_t* SPS = NULL; unsigned SPSSize = NULL;
-      u_int8_t* PPS = NULL; unsigned PPSSize = NULL;
+      u_int8_t* VPS = NULL; unsigned VPSSize = 0;
+      u_int8_t* SPS = NULL; unsigned SPSSize = 0;
+      u_int8_t* PPS = NULL; unsigned PPSSize = 0;
       u_int8_t* VPS_SPS_PPSBytes = NULL; unsigned numVPS_SPS_PPSBytes = 0;
       unsigned i;
 
@@ -580,6 +585,8 @@ RTPSink* MatroskaFile
       delete[] VPS; delete[] SPS; delete[] PPS;
     } else if (strcmp(track->mimeType, "video/VP8") == 0) {
       result = VP8VideoRTPSink::createNew(envir(), rtpGroupsock, rtpPayloadTypeIfDynamic);
+    } else if (strcmp(track->mimeType, "video/VP9") == 0) {
+      result = VP9VideoRTPSink::createNew(envir(), rtpGroupsock, rtpPayloadTypeIfDynamic);
     } else if (strcmp(track->mimeType, "text/T140") == 0) {
       result = T140TextRTPSink::createNew(envir(), rtpGroupsock, rtpPayloadTypeIfDynamic);
     }

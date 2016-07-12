@@ -14,12 +14,12 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 **********/
 // "liveMedia"
-// Copyright (c) 1996-2014 Live Networks, Inc.  All rights reserved.
+// Copyright (c) 1996-2016 Live Networks, Inc.  All rights reserved.
 // A sink representing a TCP output stream
 // Implementation
 
 #include "TCPStreamSink.hh"
-#include "RTSPCommon.hh" // for "ignoreSigPipeOnSocket()"
+#include <GroupsockHelper.hh> // for "ignoreSigPipeOnSocket()"
 
 TCPStreamSink* TCPStreamSink::createNew(UsageEnvironment& env, int socketNum) {
   return new TCPStreamSink(env, socketNum);

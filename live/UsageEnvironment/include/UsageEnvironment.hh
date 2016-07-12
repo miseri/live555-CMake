@@ -13,7 +13,7 @@ You should have received a copy of the GNU Lesser General Public License
 along with this library; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 **********/
-// Copyright (c) 1996-2014 Live Networks, Inc.  All rights reserved.
+// Copyright (c) 1996-2016 Live Networks, Inc.  All rights reserved.
 // Usage Environment
 // C++ header
 
@@ -137,7 +137,7 @@ public:
   virtual void moveSocketHandling(int oldSocketNum, int newSocketNum) = 0;
         // Changes any socket handling for "oldSocketNum" so that occurs with "newSocketNum" instead.
 
-  virtual void doEventLoop(char* watchVariable = NULL) = 0;
+  virtual void doEventLoop(char volatile* watchVariable = NULL) = 0;
       // Causes further execution to take place within the event loop.
       // Delayed tasks, background I/O handling, and other events are handled, sequentially (as a single thread of control).
       // (If "watchVariable" is not NULL, then we return from this routine when *watchVariable != 0)

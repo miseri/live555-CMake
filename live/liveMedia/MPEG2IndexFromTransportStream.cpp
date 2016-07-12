@@ -14,7 +14,7 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 **********/
 // "liveMedia"
-// Copyright (c) 1996-2014 Live Networks, Inc.  All rights reserved.
+// Copyright (c) 1996-2016 Live Networks, Inc.  All rights reserved.
 // A filter that produces a sequence of I-frame indices from a MPEG-2 Transport Stream
 // Implementation
 
@@ -203,8 +203,8 @@ void MPEG2IFrameIndexFromTransportStream
   u_int8_t adaptation_field_control = (fInputBuffer[3]&0x30)>>4;
   u_int8_t totalHeaderSize
     = adaptation_field_control <= 1 ? 4 : 5 + fInputBuffer[4];
-  if (adaptation_field_control == 2 && totalHeaderSize != TRANSPORT_PACKET_SIZE ||
-      adaptation_field_control == 3 && totalHeaderSize >= TRANSPORT_PACKET_SIZE) {
+  if ((adaptation_field_control == 2 && totalHeaderSize != TRANSPORT_PACKET_SIZE) ||
+      (adaptation_field_control == 3 && totalHeaderSize >= TRANSPORT_PACKET_SIZE)) {
     envir() << "Bad \"adaptation_field_length\": " << fInputBuffer[4] << "\n";
     doGetNextFrame();
     return;

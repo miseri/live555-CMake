@@ -13,7 +13,7 @@ You should have received a copy of the GNU Lesser General Public License
 along with this library; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 **********/
-// Copyright (c) 1996-2014, Live Networks, Inc.  All rights reserved
+// Copyright (c) 1996-2016, Live Networks, Inc.  All rights reserved
 // A test program that receives a RTP/RTCP multicast MPEG video stream,
 // and outputs the resulting MPEG file stream to 'stdout'
 // main program
@@ -87,7 +87,7 @@ int main(int argc, char** argv) {
   sessionState.source = MPEG1or2VideoRTPSource::createNew(*env, &rtpGroupsock);
 
   // Create (and start) a 'RTCP instance' for the RTP source:
-  const unsigned estimatedSessionBandwidth = 160; // in kbps; for RTCP b/w share
+  const unsigned estimatedSessionBandwidth = 4500; // in kbps; for RTCP b/w share
   const unsigned maxCNAMElen = 100;
   unsigned char CNAME[maxCNAMElen+1];
   gethostname((char*)CNAME, maxCNAMElen);

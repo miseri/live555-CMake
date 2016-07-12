@@ -14,7 +14,7 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 **********/
 // "liveMedia"
-// Copyright (c) 1996-2014 Live Networks, Inc.  All rights reserved.
+// Copyright (c) 1996-2016 Live Networks, Inc.  All rights reserved.
 // A data structure that represents a session that consists of
 // potentially multiple (audio and/or video) sub-sessions
 // Implementation
@@ -61,8 +61,8 @@ MediaSession::MediaSession(UsageEnvironment& env)
     fSubsessionsHead(NULL), fSubsessionsTail(NULL),
     fConnectionEndpointName(NULL),
     fMaxPlayStartTime(0.0f), fMaxPlayEndTime(0.0f), fAbsStartTime(NULL), fAbsEndTime(NULL),
-    fScale(1.0f), fMediaSessionType(NULL), fSessionName(NULL), fSessionDescription(NULL),
-    fControlPath(NULL) {
+    fScale(1.0f), fSpeed(1.0f),
+    fMediaSessionType(NULL), fSessionName(NULL), fSessionDescription(NULL), fControlPath(NULL) {
   fSourceFilterAddr.s_addr = 0;
 
   // Get our host name, and use this for the RTCP CNAME:
@@ -579,11 +579,13 @@ public:
   virtual ~SDPAttribute();
 
   char const* strValue() const { return fStrValue; }
+  char const* strValueToLower() const { return fStrValueToLower; }
   int intValue() const { return fIntValue; }
   Boolean valueIsHexadecimal() const { return fValueIsHexadecimal; }
 
 private:
   char* fStrValue;
+  char* fStrValueToLower;
   int fIntValue;
   Boolean fValueIsHexadecimal;
 };
@@ -637,7 +639,6 @@ MediaSubsession::~MediaSubsession() {
 }
 
 void MediaSubsession::addFilter(FramedFilter* filter){
-  if (filter == NULL || filter->inputSource() != fReadSource) return; // sanity check
   fReadSource = filter;
 }
 
@@ -722,7 +723,7 @@ Boolean MediaSubsession::initiate(int useSpecialRTPoffset) {
       // Port numbers were not specified in advance, so we use ephemeral port numbers.
       // Create sockets until we get a port-number pair (even: RTP; even+1: RTCP).
       // (However, if we're multiplexing RTCP with RTP, then we create only one socket,
-      // and the port number  can be even or odd.)
+      // and the port number can be even or odd.)
       // We need to make sure that we don't keep trying to use the same bad port numbers over
       // and over again, so we store bad sockets in a table, and delete them all when we're done.
       HashTable* socketHashTable = HashTable::create(ONE_WORD_HASH_KEYS);
@@ -871,6 +872,13 @@ char const* MediaSubsession::attrVal_str(char const* attrName) const {
   if (attr == NULL) return "";
 
   return attr->strValue();
+}
+
+char const* MediaSubsession::attrVal_strToLower(char const* attrName) const {
+  SDPAttribute* attr = (SDPAttribute*)(fAttributeTable->Lookup(attrName));
+  if (attr == NULL) return "";
+
+  return attr->strValueToLower();
 }
 
 unsigned MediaSubsession::attrVal_int(char const* attrName) const {
@@ -1264,6 +1272,11 @@ Boolean MediaSubsession::createSourceObjects(int useSpecialRTPoffset) {
 	  = VP8VideoRTPSource::createNew(env(), fRTPSocket,
 					 fRTPPayloadFormat,
 					 fRTPTimestampFrequency);
+      } else if (strcmp(fCodecName, "VP9") == 0) { // VP9 video
+	fReadSource = fRTPSource
+	  = VP9VideoRTPSource::createNew(env(), fRTPSocket,
+					 fRTPPayloadFormat,
+					 fRTPTimestampFrequency);
       } else if (strcmp(fCodecName, "AC3") == 0 || strcmp(fCodecName, "EAC3") == 0) { // AC3 audio
 	fReadSource = fRTPSource
 	  = AC3AudioRTPSource::createNew(env(), fRTPSocket,
@@ -1279,7 +1292,7 @@ Boolean MediaSubsession::createSourceObjects(int useSpecialRTPoffset) {
 	  = MPEG4GenericRTPSource::createNew(env(), fRTPSocket,
 					     fRTPPayloadFormat,
 					     fRTPTimestampFrequency,
-					     fMediumName, attrVal_str("mode"),
+					     fMediumName, attrVal_strToLower("mode"),
 					     attrVal_unsigned("sizelength"),
 					     attrVal_unsigned("indexlength"),
 					     attrVal_unsigned("indexdeltalength"));
@@ -1411,13 +1424,21 @@ Boolean MediaSubsession::createSourceObjects(int useSpecialRTPoffset) {
 ////////// SDPAttribute implementation //////////
 
 SDPAttribute::SDPAttribute(char const* strValue, Boolean valueIsHexadecimal)
-  : fStrValue(strDup(strValue)), fValueIsHexadecimal(valueIsHexadecimal) {
-  if (strValue == NULL) {
+  : fStrValue(strDup(strValue)), fStrValueToLower(NULL), fValueIsHexadecimal(valueIsHexadecimal) {
+  if (fStrValue == NULL) {
     // No value was given for this attribute, so consider it to be a Boolean, with value True:
     fIntValue = 1;
   } else {
-    // Try to parse "strValue" as an integer.  If we can't, assume an integer value of 0:
-    if (sscanf(strValue, valueIsHexadecimal ? "%x" : "%d", &fIntValue) != 1) {
+    // Create a 'tolower' version of "fStrValue", in case it's needed:
+    Locale l("POSIX");
+    size_t strSize;
+
+    fStrValueToLower = strDupSize(fStrValue, strSize);
+    for (unsigned i = 0; i < strSize-1; ++i) fStrValueToLower[i] = tolower(fStrValue[i]);
+    fStrValueToLower[strSize-1] = '\0';
+    
+    // Try to parse "fStrValueToLower" as an integer.  If we can't, assume an integer value of 0:
+    if (sscanf(fStrValueToLower, valueIsHexadecimal ? "%x" : "%d", &fIntValue) != 1) {
       fIntValue = 0;
     }
   }
@@ -1425,4 +1446,5 @@ SDPAttribute::SDPAttribute(char const* strValue, Boolean valueIsHexadecimal)
 
 SDPAttribute::~SDPAttribute() {
   delete[] fStrValue;
+  delete[] fStrValueToLower;
 }

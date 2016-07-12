@@ -11,9 +11,9 @@ more details.
 
 You should have received a copy of the GNU Lesser General Public License
 along with this library; if not, write to the Free Software Foundation, Inc.,
-59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 **********/
-// Copyright (c) 1996-2014, Live Networks, Inc.  All rights reserved
+// Copyright (c) 1996-2016, Live Networks, Inc.  All rights reserved
 // A test program that reads a ".mkv" (i.e., Matroska) file, demultiplexes each track
 // (video, audio, subtitles), and streams each track using RTP multicast.
 // main program
@@ -31,7 +31,7 @@ MatroskaFile* matroskaFile;
 MatroskaDemux* matroskaDemux;
 
 // An array of structures representing the state of the video, audio, and subtitle tracks:
-struct {
+static struct {
   unsigned trackNumber;
   FramedSource* source;
   RTPSink* sink;

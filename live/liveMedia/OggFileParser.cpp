@@ -14,7 +14,7 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 **********/
 // "liveMedia"
-// Copyright (c) 1996-2014 Live Networks, Inc.  All rights reserved.
+// Copyright (c) 1996-2016 Live Networks, Inc.  All rights reserved.
 // A parser for an Ogg file.
 // Implementation
 
@@ -336,13 +336,14 @@ static Boolean parseVorbisSetup_codebook(LEBitVector& bv) {
   fprintf(stderr, "\t\t\tcodebook_dimensions: %d; codebook_entries: %d, ordered: %d\n",
 	  codebook_dimensions, codebook_entries, ordered);
 #endif
-  unsigned codewordLength;
   if (!ordered) {
     unsigned sparse = bv.getBits(1);
 #ifdef DEBUG_SETUP_HEADER
     fprintf(stderr, "\t\t\t!ordered: sparse %d\n", sparse);
 #endif
     for (unsigned i = 0; i < codebook_entries; ++i) {
+      unsigned codewordLength;
+
       if (sparse) {
 	unsigned flag = bv.getBits(1);
 	if (flag) {
@@ -355,6 +356,8 @@ static Boolean parseVorbisSetup_codebook(LEBitVector& bv) {
       }
 #ifdef DEBUG_SETUP_HEADER
       fprintf(stderr, "\t\t\t\tcodeword length[%d]:\t%d\n", i, codewordLength);
+#else
+      codewordLength = codewordLength; // to prevent compiler warning
 #endif
     }
   } else { // ordered

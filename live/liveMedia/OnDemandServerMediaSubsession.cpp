@@ -14,7 +14,7 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 **********/
 // "liveMedia"
-// Copyright (c) 1996-2014 Live Networks, Inc.  All rights reserved.
+// Copyright (c) 1996-2016 Live Networks, Inc.  All rights reserved.
 // A 'ServerMediaSubsession' object that creates new, unicast, "RTPSink"s
 // on demand.
 // Implementation
@@ -29,7 +29,8 @@ OnDemandServerMediaSubsession
 				Boolean multiplexRTCPWithRTP)
   : ServerMediaSubsession(env),
     fSDPLines(NULL), fReuseFirstSource(reuseFirstSource),
-    fMultiplexRTCPWithRTP(multiplexRTCPWithRTP), fLastStreamToken(NULL) {
+    fMultiplexRTCPWithRTP(multiplexRTCPWithRTP), fLastStreamToken(NULL),
+    fAppHandlerTask(NULL), fAppHandlerClientData(NULL) {
   fDestinationsHashTable = HashTable::create(ONE_WORD_HASH_KEYS);
   if (fMultiplexRTCPWithRTP) {
     fInitialPortNum = initialPortNum;
@@ -67,14 +68,14 @@ OnDemandServerMediaSubsession::sdpLines() {
 
     struct in_addr dummyAddr;
     dummyAddr.s_addr = 0;
-    Groupsock dummyGroupsock(envir(), dummyAddr, 0, 0);
+    Groupsock* dummyGroupsock = createGroupsock(dummyAddr, 0);
     unsigned char rtpPayloadType = 96 + trackNumber()-1; // if dynamic
-    RTPSink* dummyRTPSink
-      = createNewRTPSink(&dummyGroupsock, rtpPayloadType, inputSource);
+    RTPSink* dummyRTPSink = createNewRTPSink(dummyGroupsock, rtpPayloadType, inputSource);
     if (dummyRTPSink != NULL && dummyRTPSink->estimatedBitrate() > 0) estBitrate = dummyRTPSink->estimatedBitrate();
 
     setSDPLinesFromRTPSink(dummyRTPSink, inputSource, estBitrate);
     Medium::close(dummyRTPSink);
+    delete dummyGroupsock;
     closeStreamSource(inputSource);
   }
 
@@ -128,7 +129,7 @@ void OnDemandServerMediaSubsession
 	  struct in_addr dummyAddr; dummyAddr.s_addr = 0;
 	  
 	  serverRTPPort = serverPortNum;
-	  rtpGroupsock = new Groupsock(envir(), dummyAddr, serverRTPPort, 255);
+	  rtpGroupsock = createGroupsock(dummyAddr, serverRTPPort);
 	  if (rtpGroupsock->socketNum() >= 0) break; // success
 	}
 
@@ -142,7 +143,7 @@ void OnDemandServerMediaSubsession
 	  struct in_addr dummyAddr; dummyAddr.s_addr = 0;
 
 	  serverRTPPort = serverPortNum;
-	  rtpGroupsock = new Groupsock(envir(), dummyAddr, serverRTPPort, 255);
+	  rtpGroupsock = createGroupsock(dummyAddr, serverRTPPort);
 	  if (rtpGroupsock->socketNum() < 0) {
 	    delete rtpGroupsock;
 	    continue; // try again
@@ -155,7 +156,7 @@ void OnDemandServerMediaSubsession
 	  } else {
 	    // Create a separate 'groupsock' object (with the next (odd) port number) for RTCP:
 	    serverRTCPPort = ++serverPortNum;
-	    rtcpGroupsock = new Groupsock(envir(), dummyAddr, serverRTCPPort, 255);
+	    rtcpGroupsock = createGroupsock(dummyAddr, serverRTCPPort);
 	    if (rtcpGroupsock->socketNum() < 0) {
 	      delete rtpGroupsock;
 	      delete rtcpGroupsock;
@@ -214,7 +215,7 @@ void OnDemandServerMediaSubsession::startStream(unsigned clientSessionId,
   Destinations* destinations
     = (Destinations*)(fDestinationsHashTable->Lookup((char const*)clientSessionId));
   if (streamState != NULL) {
-    streamState->startPlaying(destinations,
+    streamState->startPlaying(destinations, clientSessionId,
 			      rtcpRRHandler, rtcpRRHandlerClientData,
 			      serverRequestAlternativeByteHandler, serverRequestAlternativeByteHandlerClientData);
     RTPSink* rtpSink = streamState->rtpSink(); // alias
@@ -303,7 +304,7 @@ float OnDemandServerMediaSubsession::getCurrentNPT(void* streamToken) {
 
     return streamState->startNPT()
       + (rtpSink->mostRecentPresentationTime().tv_sec - rtpSink->initialPresentationTime().tv_sec)
-      + (rtpSink->mostRecentPresentationTime().tv_sec - rtpSink->initialPresentationTime().tv_sec)/1000000.0f;
+      + (rtpSink->mostRecentPresentationTime().tv_usec - rtpSink->initialPresentationTime().tv_usec)/1000000.0f;
   } while (0);
 
   return 0.0;
@@ -314,6 +315,20 @@ FramedSource* OnDemandServerMediaSubsession::getStreamSource(void* streamToken) 
 
   StreamState* streamState = (StreamState*)streamToken;
   return streamState->mediaSource();
+}
+
+void OnDemandServerMediaSubsession
+::getRTPSinkandRTCP(void* streamToken,
+		    RTPSink const*& rtpSink, RTCPInstance const*& rtcp) {
+  if (streamToken == NULL) {
+    rtpSink = NULL;
+    rtcp = NULL;
+    return;
+  }
+
+  StreamState* streamState = (StreamState*)streamToken;
+  rtpSink = streamState->rtpSink();
+  rtcp = streamState->rtcpInstance();
 }
 
 void OnDemandServerMediaSubsession::deleteStream(unsigned clientSessionId,
@@ -327,7 +342,7 @@ void OnDemandServerMediaSubsession::deleteStream(unsigned clientSessionId,
     fDestinationsHashTable->Remove((char const*)clientSessionId);
 
     // Stop streaming to these destinations:
-    if (streamState != NULL) streamState->endPlaying(destinations);
+    if (streamState != NULL) streamState->endPlaying(destinations, clientSessionId);
   }
 
   // Delete the "StreamState" structure if it's no longer being used:
@@ -375,6 +390,34 @@ void OnDemandServerMediaSubsession
 
 void OnDemandServerMediaSubsession::closeStreamSource(FramedSource *inputSource) {
   Medium::close(inputSource);
+}
+
+Groupsock* OnDemandServerMediaSubsession
+::createGroupsock(struct in_addr const& addr, Port port) {
+  // Default implementation; may be redefined by subclasses:
+  return new Groupsock(envir(), addr, port, 255);
+}
+
+RTCPInstance* OnDemandServerMediaSubsession
+::createRTCP(Groupsock* RTCPgs, unsigned totSessionBW, /* in kbps */
+	     unsigned char const* cname, RTPSink* sink) {
+  // Default implementation; may be redefined by subclasses:
+  return RTCPInstance::createNew(envir(), RTCPgs, totSessionBW, cname, sink, NULL/*we're a server*/);
+}
+
+void OnDemandServerMediaSubsession
+::setRTCPAppPacketHandler(RTCPAppHandlerFunc* handler, void* clientData) {
+  fAppHandlerTask = handler;
+  fAppHandlerClientData = clientData;
+}
+
+void OnDemandServerMediaSubsession
+::sendRTCPAppPacket(u_int8_t subtype, char const* name,
+		    u_int8_t* appDependentData, unsigned appDependentDataSize) {
+  StreamState* streamState = (StreamState*)fLastStreamToken;
+  if (streamState != NULL) {
+    streamState->sendRTCPAppPacket(subtype, name, appDependentData, appDependentDataSize);
+  }
 }
 
 void OnDemandServerMediaSubsession
@@ -460,7 +503,7 @@ StreamState::~StreamState() {
 }
 
 void StreamState
-::startPlaying(Destinations* dests,
+::startPlaying(Destinations* dests, unsigned clientSessionId,
 	       TaskFunc* rtcpRRHandler, void* rtcpRRHandlerClientData,
 	       ServerRequestAlternativeByteHandler* serverRequestAlternativeByteHandler,
 	       void* serverRequestAlternativeByteHandlerClientData) {
@@ -468,11 +511,9 @@ void StreamState
 
   if (fRTCPInstance == NULL && fRTPSink != NULL) {
     // Create (and start) a 'RTCP instance' for this RTP sink:
-    fRTCPInstance
-      = RTCPInstance::createNew(fRTPSink->envir(), fRTCPgs,
-				fTotalBW, (unsigned char*)fMaster.fCNAME,
-				fRTPSink, NULL /* we're a server */);
+    fRTCPInstance = fMaster.createRTCP(fRTCPgs, fTotalBW, (unsigned char*)fMaster.fCNAME, fRTPSink);
         // Note: This starts RTCP running automatically
+    fRTCPInstance->setAppHandler(fMaster.fAppHandlerTask, fMaster.fAppHandlerClientData);
   }
 
   if (dests->isTCP) {
@@ -492,8 +533,10 @@ void StreamState
   } else {
     // Tell the RTP and RTCP 'groupsocks' about this destination
     // (in case they don't already have it):
-    if (fRTPgs != NULL) fRTPgs->addDestination(dests->addr, dests->rtpPort);
-    if (fRTCPgs != NULL) fRTCPgs->addDestination(dests->addr, dests->rtcpPort);
+    if (fRTPgs != NULL) fRTPgs->addDestination(dests->addr, dests->rtpPort, clientSessionId);
+    if (fRTCPgs != NULL && !(fRTCPgs == fRTPgs && dests->rtcpPort.num() == dests->rtpPort.num())) {
+      fRTCPgs->addDestination(dests->addr, dests->rtcpPort, clientSessionId);
+    }
     if (fRTCPInstance != NULL) {
       fRTCPInstance->setSpecificRRHandler(dests->addr.s_addr, dests->rtcpPort,
 					  rtcpRRHandler, rtcpRRHandlerClientData);
@@ -523,7 +566,7 @@ void StreamState::pause() {
   fAreCurrentlyPlaying = False;
 }
 
-void StreamState::endPlaying(Destinations* dests) {
+void StreamState::endPlaying(Destinations* dests, unsigned clientSessionId) {
 #if 0
   // The following code is temporarily disabled, because it erroneously sends RTCP "BYE"s to all clients if multiple
   // clients are streaming from the same data source (i.e., if "reuseFirstSource" is True), and we don't want that to happen
@@ -547,11 +590,18 @@ void StreamState::endPlaying(Destinations* dests) {
     }
   } else {
     // Tell the RTP and RTCP 'groupsocks' to stop using these destinations:
-    if (fRTPgs != NULL) fRTPgs->removeDestination(dests->addr, dests->rtpPort);
-    if (fRTCPgs != NULL) fRTCPgs->removeDestination(dests->addr, dests->rtcpPort);
+    if (fRTPgs != NULL) fRTPgs->removeDestination(clientSessionId);
+    if (fRTCPgs != NULL && fRTCPgs != fRTPgs) fRTCPgs->removeDestination(clientSessionId);
     if (fRTCPInstance != NULL) {
       fRTCPInstance->unsetSpecificRRHandler(dests->addr.s_addr, dests->rtcpPort);
     }
+  }
+}
+
+void StreamState::sendRTCPAppPacket(u_int8_t subtype, char const* name,
+				    u_int8_t* appDependentData, unsigned appDependentDataSize) {
+  if (fRTCPInstance != NULL) {
+    fRTCPInstance->sendAppPacket(subtype, name, appDependentData, appDependentDataSize);
   }
 }
 

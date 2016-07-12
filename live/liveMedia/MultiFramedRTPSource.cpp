@@ -14,7 +14,7 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 **********/
 // "liveMedia"
-// Copyright (c) 1996-2014 Live Networks, Inc.  All rights reserved.
+// Copyright (c) 1996-2016 Live Networks, Inc.  All rights reserved.
 // RTP source for a common kind of payload format: Those that pack multiple,
 // complete codec frames (as many as possible) into each RTP packet.
 // Implementation
@@ -105,6 +105,10 @@ Boolean MultiFramedRTPSource
 }
 
 void MultiFramedRTPSource::doStopGettingFrames() {
+  if (fPacketReadInProgress != NULL) {
+    fReorderingBuffer->freePacket(fPacketReadInProgress);
+    fPacketReadInProgress = NULL;
+  }
   envir().taskScheduler().unscheduleDelayedTask(nextTask());
   fRTPInterface.stopNetworkReading();
   fReorderingBuffer->reset();
@@ -145,7 +149,7 @@ void MultiFramedRTPSource::doGetNextFrame1() {
 	// Something's wrong with the header; reject the packet:
 	fReorderingBuffer->releaseUsedPacket(nextPacket);
 	fNeedDelivery = True;
-	break;
+	continue;
       }
       nextPacket->skip(specialHeaderSize);
     }
@@ -168,7 +172,7 @@ void MultiFramedRTPSource::doGetNextFrame1() {
       // This packet is unusable; reject it:
       fReorderingBuffer->releaseUsedPacket(nextPacket);
       fNeedDelivery = True;
-      break;
+      continue;
     }
 
     // The packet is usable. Deliver all or part of it to our caller:
@@ -184,7 +188,7 @@ void MultiFramedRTPSource::doGetNextFrame1() {
       fReorderingBuffer->releaseUsedPacket(nextPacket);
     }
 
-    if (fCurrentPacketCompletesFrame) {
+    if (fCurrentPacketCompletesFrame && fFrameSize > 0) {
       // We have all the data that the client wants.
       if (fNumTruncatedBytes > 0) {
 	envir() << "MultiFramedRTPSource::doGetNextFrame1(): The total received frame size exceeds the client's buffer size ("
@@ -235,8 +239,8 @@ void MultiFramedRTPSource::networkReadHandler1() {
     struct sockaddr_in fromAddress;
     Boolean packetReadWasIncomplete = fPacketReadInProgress != NULL;
     if (!bPacket->fillInData(fRTPInterface, fromAddress, packetReadWasIncomplete)) {
-      if (bPacket->bytesAvailable() == 0) {
-	envir() << "MultiFramedRTPSource error: Hit limit when reading incoming packet over TCP. Increase \"MAX_PACKET_SIZE\"\n";
+      if (bPacket->bytesAvailable() == 0) { // should not happen??
+	envir() << "MultiFramedRTPSource internal error: Hit limit when reading incoming packet over TCP\n";
       }
       fPacketReadInProgress = NULL;
       break;
@@ -278,8 +282,8 @@ void MultiFramedRTPSource::networkReadHandler1() {
     }
 
     // Skip over any CSRC identifiers in the header:
-    unsigned cc = (rtpHdr>>24)&0xF;
-    if (bPacket->dataSize() < cc) break;
+    unsigned cc = (rtpHdr>>24)&0x0F;
+    if (bPacket->dataSize() < cc*4) break;
     ADVANCE(cc*4);
 
     // Check for (& ignore) any RTP header extension
@@ -338,7 +342,7 @@ void MultiFramedRTPSource::networkReadHandler1() {
 
 ////////// BufferedPacket and BufferedPacketFactory implementation /////
 
-#define MAX_PACKET_SIZE 20000
+#define MAX_PACKET_SIZE 65536
 
 BufferedPacket::BufferedPacket()
   : fPacketSize(MAX_PACKET_SIZE),
@@ -385,10 +389,16 @@ Boolean BufferedPacket::fillInData(RTPInterface& rtpInterface, struct sockaddr_i
 				   Boolean& packetReadWasIncomplete) {
   if (!packetReadWasIncomplete) reset();
 
-  unsigned numBytesRead;
   unsigned const maxBytesToRead = bytesAvailable();
   if (maxBytesToRead == 0) return False; // exceeded buffer size when reading over TCP
-  if (!rtpInterface.handleRead(&fBuf[fTail], maxBytesToRead, numBytesRead, fromAddress, packetReadWasIncomplete)) {
+
+  unsigned numBytesRead;
+  int tcpSocketNum; // not used
+  unsigned char tcpStreamChannelId; // not used
+  if (!rtpInterface.handleRead(&fBuf[fTail], maxBytesToRead,
+			       numBytesRead, fromAddress,
+			       tcpSocketNum, tcpStreamChannelId,
+			       packetReadWasIncomplete)) {
     return False;
   }
   fTail += numBytesRead;

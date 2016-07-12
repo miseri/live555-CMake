@@ -14,7 +14,7 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 **********/
 // "liveMedia"
-// Copyright (c) 1996-2014 Live Networks, Inc.  All rights reserved.
+// Copyright (c) 1996-2016 Live Networks, Inc.  All rights reserved.
 // A generic RTSP client - for a single "rtsp://" URL
 // C++ header
 
@@ -30,8 +30,10 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 #ifndef _DIGEST_AUTHENTICATION_HH
 #include "DigestAuthentication.hh"
 #endif
+#ifndef OMIT_REGISTER_HANDLING
 #ifndef _RTSP_SERVER_HH
 #include "RTSPServer.hh" // For the optional "HandlerForREGISTERCommand" mini-server
+#endif
 #endif
 
 class RTSPClient: public Medium {
@@ -153,6 +155,10 @@ public:
       // Our implementation automatically does this just prior to sending each "PLAY" command;
       // You should not call these functions yourself unless you know what you're doing.
 
+  void setSpeed(MediaSession& session, float speed = 1.0f);
+      // Set (recorded) media download speed to given value to support faster download using 'Speed:'
+      // option on 'PLAY' command.
+
   Boolean changeResponseHandler(unsigned cseq, responseHandler* newResponseHandler);
       // Changes the response handler for the previously-performed command (whose operation returned "cseq").
       // (To turn off any response handling for the command, use a "newResponseHandler" value of NULL.  This might be done as part
@@ -172,6 +178,10 @@ public:
 
   void setUserAgentString(char const* userAgentName);
       // sets an alternative string to be used in RTSP "User-Agent:" headers
+
+  void disallowBasicAuthentication() { fAllowBasicAuthentication = False; }
+      // call this if you don't want the server to request 'Basic' authentication
+      // (which would cause the client to send usernames and passwords over the net).
 
   unsigned sessionTimeoutParameter() const { return fSessionTimeoutParameter; }
 
@@ -262,6 +272,7 @@ private:
   int openConnection(); // -1: failure; 0: pending; 1: success
   int connectToServer(int socketNum, portNumBits remotePortNum); // used to implement "openConnection()"; result values are the same
   char* createAuthenticatorString(char const* cmd, char const* url);
+  char* createBlocksizeString(Boolean streamUsingTCP);
   void handleRequestError(RequestRecord* request);
   Boolean parseResponseCode(char const* line, unsigned& responseCode, char const*& responseString);
   void handleIncomingRequest();
@@ -270,13 +281,15 @@ private:
 			       char*& serverAddressStr, portNumBits& serverPortNum,
 			       unsigned char& rtpChannelId, unsigned char& rtcpChannelId);
   Boolean parseScaleParam(char const* paramStr, float& scale);
+  Boolean parseSpeedParam(char const* paramStr, float& speed);
   Boolean parseRTPInfoParams(char const*& paramStr, u_int16_t& seqNum, u_int32_t& timestamp);
   Boolean handleSETUPResponse(MediaSubsession& subsession, char const* sessionParamsStr, char const* transportParamsStr,
 			      Boolean streamUsingTCP);
   Boolean handlePLAYResponse(MediaSession& session, MediaSubsession& subsession,
-                             char const* scaleParamsStr, char const* rangeParamsStr, char const* rtpInfoParamsStr);
+                             char const* scaleParamsStr, const char* speedParamsStr,
+			     char const* rangeParamsStr, char const* rtpInfoParamsStr);
   Boolean handleTEARDOWNResponse(MediaSession& session, MediaSubsession& subsession);
-  Boolean handleGET_PARAMETERResponse(char const* parameterName, char*& resultValueString);
+  Boolean handleGET_PARAMETERResponse(char const* parameterName, char*& resultValueString, char* resultValueStringEnd);
   Boolean handleAuthenticationFailure(char const* wwwAuthenticateParamsStr);
   Boolean resendCommand(RequestRecord* request);
   char const* sessionURL(MediaSession const& session) const;
@@ -302,10 +315,16 @@ private:
   void incomingDataHandler1();
   void handleResponseBytes(int newBytesRead);
 
+public:
+  u_int16_t desiredMaxIncomingPacketSize;
+    // If set to a value >0, then a "Blocksize:" header with this value (minus an allowance for
+    // IP, UDP, and RTP headers) will be sent with each "SETUP" request.
+
 protected:
   int fVerbosityLevel;
   unsigned fCSeq; // sequence number, used in consecutive requests
   Authenticator fCurrentAuthenticator;
+  Boolean fAllowBasicAuthentication;
   netAddressBits fServerAddress;
 
 private:
@@ -328,6 +347,7 @@ private:
 };
 
 
+#ifndef OMIT_REGISTER_HANDLING
 ////////// HandlerServerForREGISTERCommand /////////
 
 // A simple server that creates a new "RTSPClient" object whenever a "REGISTER" request arrives (specifying the "rtsp://" URL
@@ -341,7 +361,7 @@ public:
 						    Port ourPort = 0, UserAuthenticationDatabase* authDatabase = NULL,
 						    int verbosityLevel = 0, char const* applicationName = NULL);
       // If ourPort.num() == 0, we'll choose the port number ourself.  (Use the following function to get it.)
-  portNumBits serverPortNum() const { return ntohs(fRTSPServerPort.num()); }
+  portNumBits serverPortNum() const { return ntohs(fServerPort.num()); }
 
 protected:
   HandlerServerForREGISTERCommand(UsageEnvironment& env, onRTSPClientCreationFunc* creationFunc, int ourSocket, Port ourPort,
@@ -365,5 +385,6 @@ private:
   int fVerbosityLevel;
   char* fApplicationName;
 };
+#endif
 
 #endif

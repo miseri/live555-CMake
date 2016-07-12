@@ -14,7 +14,7 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 **********/
 // "liveMedia"
-// Copyright (c) 1996-2014 Live Networks, Inc.  All rights reserved.
+// Copyright (c) 1996-2016 Live Networks, Inc.  All rights reserved.
 // Media
 // Implementation
 
@@ -84,10 +84,6 @@ Boolean Medium::isMediaSession() const {
 }
 
 Boolean Medium::isServerMediaSession() const {
-  return False; // default implementation
-}
-
-Boolean Medium::isDarwinInjector() const {
   return False; // default implementation
 }
 

@@ -14,7 +14,7 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 **********/
 // "liveMedia"
-// Copyright (c) 1996-2014 Live Networks, Inc.  All rights reserved.
+// Copyright (c) 1996-2016 Live Networks, Inc.  All rights reserved.
 // A server that supports both RTSP, and HTTP streaming (using Apple's "HTTP Live Streaming" protocol)
 // C++ header
 
@@ -48,7 +48,7 @@ protected:
   virtual ~RTSPServerSupportingHTTPStreaming();
 
 protected: // redefined virtual functions
-  virtual RTSPClientConnection* createNewClientConnection(int clientSocket, struct sockaddr_in clientAddr);
+  virtual ClientConnection* createNewClientConnection(int clientSocket, struct sockaddr_in clientAddr);
 
 public: // should be protected, but some old compilers complain otherwise
   class RTSPClientConnectionSupportingHTTPStreaming: public RTSPServer::RTSPClientConnection {
@@ -64,6 +64,7 @@ public: // should be protected, but some old compilers complain otherwise
 
   private:
     u_int32_t fClientSessionId;
+    FramedSource* fStreamSource;
     ByteStreamMemoryBufferSource* fPlaylistSource;
     TCPStreamSink* fTCPSink;
   };

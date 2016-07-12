@@ -13,7 +13,7 @@ You should have received a copy of the GNU Lesser General Public License
 along with this library; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 **********/
-// Copyright (c) 1996-2014, Live Networks, Inc.  All rights reserved
+// Copyright (c) 1996-2016, Live Networks, Inc.  All rights reserved
 // A common framework, used for the "openRTSP" and "playSIP" applications
 // Implementation
 //
@@ -54,6 +54,7 @@ void shutdown(int exitCode = 1);
 void signalHandlerShutdown(int sig);
 void checkForPacketArrival(void* clientData);
 void checkInterPacketGaps(void* clientData);
+void checkSessionTimeoutBrokenServer(void* clientData);
 void beginQOSMeasurement();
 
 char const* progName;
@@ -63,6 +64,7 @@ Authenticator* ourAuthenticator = NULL;
 char const* streamURL = NULL;
 MediaSession* session = NULL;
 TaskToken sessionTimerTask = NULL;
+TaskToken sessionTimeoutBrokenServerTask = NULL;
 TaskToken arrivalCheckTimerTask = NULL;
 TaskToken interPacketGapCheckTimerTask = NULL;
 TaskToken qosMeasurementTimerTask = NULL;
@@ -81,6 +83,7 @@ double duration = 0;
 double durationSlop = -1.0; // extra seconds to play at the end
 double initialSeekTime = 0.0f;
 char* initialAbsoluteSeekTime = NULL;
+char* initialAbsoluteSeekEndTime = NULL;
 float scale = 1.0f;
 double endTime;
 unsigned interPacketGapMaxTime = 0;
@@ -91,6 +94,8 @@ Boolean sendOptionsRequest = True;
 Boolean sendOptionsRequestOnly = False;
 Boolean oneFilePerFrame = False;
 Boolean notifyOnPacketArrival = False;
+Boolean sendKeepAlivesToBrokenServers = False;
+unsigned sessionTimeoutParameter = 0;
 Boolean streamUsingTCP = False;
 Boolean forceMulticastOnUnspecified = False;
 unsigned short desiredPortNum = 0;
@@ -134,9 +139,9 @@ void usage() {
        << " [-u <username> <password>"
 	   << (allowProxyServers ? " [<proxy-server> [<proxy-server-port>]]" : "")
        << "]" << (supportCodecSelection ? " [-A <audio-codec-rtp-payload-format-code>|-M <mime-subtype-name>]" : "")
-       << " [-s <initial-seek-time>]|[-U <absolute-seek-time>] [-z <scale>] [-g user-agent]"
+       << " [-s <initial-seek-time>]|[-U <absolute-seek-time>] [-E <absolute-seek-end-time>] [-z <scale>] [-g user-agent]"
        << " [-k <username-for-REGISTER> <password-for-REGISTER>]"
-       << " [-P <interval-in-seconds>]"
+       << " [-P <interval-in-seconds>] [-K]"
        << " [-w <width> -h <height>] [-f <frames-per-second>] [-y] [-H] [-Q [<measurement-interval>]] [-F <filename-prefix>] [-b <file-sink-buffer-size>] [-B <input-socket-buffer-size>] [-I <input-interface-ip-address>] [-m] [<url>|-R [<port-num>]] (or " << progName << " -o [-V] <url>)\n";
   shutdown();
 }
@@ -363,6 +368,11 @@ int main(int argc, char** argv) {
       break;
     }
 
+    case 'K': { // Send periodic 'keep-alive' requests to keep broken server sessions alive
+      sendKeepAlivesToBrokenServers = True;
+      break;
+    }
+
     case 'A': { // specify a desired audio RTP payload format
       unsigned formatArg;
       if (sscanf(argv[2], "%u", &formatArg) != 1
@@ -484,6 +494,12 @@ int main(int argc, char** argv) {
       break;
     }
 
+    case 'E': {
+      // specify initial absolute seek END time (trick play), using a string of the form "YYYYMMDDTHHMMSSZ" or "YYYYMMDDTHHMMSS.<frac>Z"
+      initialAbsoluteSeekEndTime = argv[2];
+      ++argv; --argc;
+      break;
+    }
     case 'z': { // scale (trick play)
       float arg;
       if (sscanf(argv[2], "%g", &arg) != 1 || arg == 0.0f) {
@@ -559,6 +575,10 @@ int main(int argc, char** argv) {
   }
   if (initialAbsoluteSeekTime != NULL && initialSeekTime != 0.0f) {
     *env << "The -s and -U options cannot both be used!\n";
+    usage();
+  }
+  if (initialAbsoluteSeekTime == NULL && initialAbsoluteSeekEndTime != NULL) {
+    *env << "The -E option requires the -U option!\n";
     usage();
   }
   if (authDBForREGISTER != NULL && !createHandlerServerForREGISTERCommand) {
@@ -761,7 +781,7 @@ void continueAfterDESCRIBE(RTSPClient*, int resultCode, char* resultString) {
 
 MediaSubsession *subsession;
 Boolean madeProgress = False;
-void continueAfterSETUP(RTSPClient*, int resultCode, char* resultString) {
+void continueAfterSETUP(RTSPClient* client, int resultCode, char* resultString) {
   if (resultCode == 0) {
       *env << "Setup \"" << subsession->mediumName()
 	   << "/" << subsession->codecName()
@@ -780,6 +800,8 @@ void continueAfterSETUP(RTSPClient*, int resultCode, char* resultString) {
 	 << "\" subsession: " << resultString << "\n";
   }
   delete[] resultString;
+
+  if (client != NULL) sessionTimeoutParameter = client->sessionTimeoutParameter();
 
   // Set up the next subsession, if any:
   setupStreams();
@@ -995,9 +1017,10 @@ void setupStreams() {
   }
 
   char const* absStartTime = initialAbsoluteSeekTime != NULL ? initialAbsoluteSeekTime : session->absStartTime();
+  char const* absEndTime = initialAbsoluteSeekEndTime != NULL ? initialAbsoluteSeekEndTime : session->absEndTime();
   if (absStartTime != NULL) {
     // Either we or the server have specified that seeking should be done by 'absolute' time:
-    startPlayingSession(session, absStartTime, session->absEndTime(), scale, continueAfterPLAY);
+    startPlayingSession(session, absStartTime, absEndTime, scale, continueAfterPLAY);
   } else {
     // Normal case: Seek by relative time (NPT):
     startPlayingSession(session, initialSeekTime, endTime, scale, continueAfterPLAY);
@@ -1055,9 +1078,12 @@ void continueAfterPLAY(RTSPClient*, int resultCode, char* resultString) {
 #endif
   }
 
+  sessionTimeoutBrokenServerTask = NULL;
+
   // Watch for incoming packets (if desired):
   checkForPacketArrival(NULL);
   checkInterPacketGaps(NULL);
+  checkSessionTimeoutBrokenServer(NULL);
 }
 
 void closeMediaSinks() {
@@ -1114,6 +1140,7 @@ void sessionAfterPlaying(void* /*clientData*/) {
     if (env != NULL) {
       env->taskScheduler().unscheduleDelayedTask(periodicFileOutputTask);
       env->taskScheduler().unscheduleDelayedTask(sessionTimerTask);
+      env->taskScheduler().unscheduleDelayedTask(sessionTimeoutBrokenServerTask);
       env->taskScheduler().unscheduleDelayedTask(arrivalCheckTimerTask);
       env->taskScheduler().unscheduleDelayedTask(interPacketGapCheckTimerTask);
       env->taskScheduler().unscheduleDelayedTask(qosMeasurementTimerTask);
@@ -1356,6 +1383,7 @@ void shutdown(int exitCode) {
   if (env != NULL) {
     env->taskScheduler().unscheduleDelayedTask(periodicFileOutputTask);
     env->taskScheduler().unscheduleDelayedTask(sessionTimerTask);
+    env->taskScheduler().unscheduleDelayedTask(sessionTimeoutBrokenServerTask);
     env->taskScheduler().unscheduleDelayedTask(arrivalCheckTimerTask);
     env->taskScheduler().unscheduleDelayedTask(interPacketGapCheckTimerTask);
     env->taskScheduler().unscheduleDelayedTask(qosMeasurementTimerTask);
@@ -1486,4 +1514,22 @@ void checkInterPacketGaps(void* /*clientData*/) {
       = env->taskScheduler().scheduleDelayedTask(interPacketGapMaxTime*1000000,
 				 (TaskFunc*)checkInterPacketGaps, NULL);
   }
+}
+
+void checkSessionTimeoutBrokenServer(void* /*clientData*/) {
+  if (!sendKeepAlivesToBrokenServers) return; // we're not checking
+
+  // Send an "OPTIONS" request, starting with the second call
+  if (sessionTimeoutBrokenServerTask != NULL) {
+    getOptions(NULL);
+  }
+  
+  unsigned sessionTimeout = sessionTimeoutParameter == 0 ? 60/*default*/ : sessionTimeoutParameter;
+  unsigned secondsUntilNextKeepAlive = sessionTimeout <= 5 ? 1 : sessionTimeout - 5;
+      // Reduce the interval a little, to be on the safe side
+
+  sessionTimeoutBrokenServerTask 
+    = env->taskScheduler().scheduleDelayedTask(secondsUntilNextKeepAlive*1000000,
+			 (TaskFunc*)checkSessionTimeoutBrokenServer, NULL);
+					       
 }

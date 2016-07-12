@@ -13,7 +13,7 @@ You should have received a copy of the GNU Lesser General Public License
 along with this library; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 **********/
-// Copyright (c) 1996-2014, Live Networks, Inc.  All rights reserved
+// Copyright (c) 1996-2016, Live Networks, Inc.  All rights reserved
 // A demo application, showing how to create and run a RTSP client (that can potentially receive multiple streams concurrently).
 //
 // NOTE: This code - although it builds a running application - is intended only to illustrate how to develop your own RTSP
@@ -293,7 +293,7 @@ void continueAfterSETUP(RTSPClient* rtspClient, int resultCode, char* resultStri
     }
 
     env << *rtspClient << "Created a data sink for the \"" << *scs.subsession << "\" subsession\n";
-    scs.subsession->miscPtr = rtspClient; // a hack to let subsession handle functions get the "RTSPClient" from the subsession 
+    scs.subsession->miscPtr = rtspClient; // a hack to let subsession handler functions get the "RTSPClient" from the subsession 
     scs.subsession->sink->startPlaying(*(scs.subsession->readSource()),
 				       subsessionAfterPlaying, scs.subsession);
     // Also set a handler to be called if a RTCP "BYE" arrives for this subsession:

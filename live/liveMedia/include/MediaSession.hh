@@ -14,7 +14,7 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 **********/
 // "liveMedia"
-// Copyright (c) 1996-2014 Live Networks, Inc.  All rights reserved.
+// Copyright (c) 1996-2016 Live Networks, Inc.  All rights reserved.
 // A data structure that represents a session that consists of
 // potentially multiple (audio and/or video) sub-sessions
 // (This data structure is used for media *receivers* - i.e., clients.
@@ -71,6 +71,7 @@ public:
   char const* CNAME() const { return fCNAME; }
   struct in_addr const& sourceFilterAddr() const { return fSourceFilterAddr; }
   float& scale() { return fScale; }
+  float& speed() { return fSpeed; }
   char* mediaSessionType() const { return fMediaSessionType; }
   char* sessionName() const { return fSessionName; }
   char* sessionDescription() const { return fSessionDescription; }
@@ -132,6 +133,7 @@ protected:
   char* fAbsEndTime;
   struct in_addr fSourceFilterAddr; // used for SSM
   float fScale; // set from a RTSP "Scale:" header
+  float fSpeed;
   char* fMediaSessionType; // holds a=type value
   char* fSessionName; // holds s=<session name> value
   char* fSessionDescription; // holds i=<session description> value
@@ -172,6 +174,7 @@ public:
   unsigned videoFPS() const { return fVideoFPS; }
   unsigned numChannels() const { return fNumChannels; }
   float& scale() { return fScale; }
+  float& speed() { return fSpeed; }
 
   RTPSource* rtpSource() { return fRTPSource; }
   RTCPInstance* rtcpInstance() { return fRTCPInstance; }
@@ -216,6 +219,8 @@ public:
 
   // General SDP attribute accessor functions:
   char const* attrVal_str(char const* attrName) const;
+      // returns "" if attribute doesn't exist (and has no default value), or is not a string
+  char const* attrVal_strToLower(char const* attrName) const;
       // returns "" if attribute doesn't exist (and has no default value), or is not a string
   unsigned attrVal_int(char const* attrName) const;
       // also returns 0 if attribute doesn't exist (and has no default value)
@@ -319,6 +324,7 @@ protected:
   unsigned fNumChannels;
      // optionally set by "a=rtpmap:" lines for audio sessions.  Default: 1
   float fScale; // set from a RTSP "Scale:" header
+  float fSpeed;
   double fNPT_PTS_Offset; // set by "getNormalPlayTime()"; add this to a PTS to get NPT
   HashTable* fAttributeTable; // for "a=fmtp:" attributes.  (Later an array by payload type #####)
 

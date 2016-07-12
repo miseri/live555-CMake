@@ -14,7 +14,7 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA
 **********/
 // "liveMedia"
-// Copyright (c) 1996-2014 Live Networks, Inc.  All rights reserved.
+// Copyright (c) 1996-2016 Live Networks, Inc.  All rights reserved.
 // An abstraction of a network interface used for RTP (or RTCP).
 // (This allows the RTP-over-TCP hack (RFC 2326, section 10.12) to
 // be implemented transparently.)
@@ -212,7 +212,7 @@ Boolean RTPInterface::sendPacket(unsigned char* packet, unsigned packetSize) {
   Boolean success = True; // we'll return False instead if any of the sends fail
 
   // Normal case: Send as a UDP packet:
-  if (!fGS->output(envir(), fGS->ttl(), packet, packetSize)) success = False;
+  if (!fGS->output(envir(), packet, packetSize)) success = False;
 
   // Also, send over each of our TCP sockets:
   tcpStreamRecord* nextStream;
@@ -246,14 +246,20 @@ void RTPInterface
 }
 
 Boolean RTPInterface::handleRead(unsigned char* buffer, unsigned bufferMaxSize,
-				 unsigned& bytesRead, struct sockaddr_in& fromAddress, Boolean& packetReadWasIncomplete) {
+				 unsigned& bytesRead, struct sockaddr_in& fromAddress,
+				 int& tcpSocketNum, unsigned char& tcpStreamChannelId,
+				 Boolean& packetReadWasIncomplete) {
   packetReadWasIncomplete = False; // by default
   Boolean readSuccess;
   if (fNextTCPReadStreamSocketNum < 0) {
     // Normal case: read from the (datagram) 'groupsock':
+    tcpSocketNum = -1;
     readSuccess = fGS->handleRead(buffer, bufferMaxSize, bytesRead, fromAddress);
   } else {
     // Read from the TCP connection:
+    tcpSocketNum = fNextTCPReadStreamSocketNum;
+    tcpStreamChannelId = fNextTCPReadStreamChannelId;
+
     bytesRead = 0;
     unsigned totBytesToRead = fNextTCPReadSize;
     if (totBytesToRead > bufferMaxSize) totBytesToRead = bufferMaxSize;
@@ -279,6 +285,7 @@ Boolean RTPInterface::handleRead(unsigned char* buffer, unsigned bufferMaxSize,
       packetReadWasIncomplete = True;
       return True;
     }
+    fNextTCPReadStreamSocketNum = -1; // default, for next time
   }
 
   if (readSuccess && fAuxReadHandlerFunc != NULL) {
@@ -290,7 +297,7 @@ Boolean RTPInterface::handleRead(unsigned char* buffer, unsigned bufferMaxSize,
 
 void RTPInterface::stopNetworkReading() {
   // Normal case
-  envir().taskScheduler().turnOffBackgroundReadHandling(fGS->socketNum());
+  if (fGS != NULL) envir().taskScheduler().turnOffBackgroundReadHandling(fGS->socketNum());
 
   // Also turn off read handling on each of our TCP connections:
   for (tcpStreamRecord* streams = fTCPStreams; streams != NULL; streams = streams->fNext) {
@@ -369,7 +376,7 @@ Boolean RTPInterface::sendDataOverTCP(int socketNum, u_int8_t const* data, unsig
       makeSocketNonBlocking(socketNum);
 
       return True;
-    } else if (sendResult < 0) {
+    } else if (sendResult < 0 && envir().getErrno() != EAGAIN) {
       // Because the "send()" call failed, assume that the socket is now unusable, so stop
       // using it (for both RTP and RTCP):
       removeStreamSocket(socketNum, 0xFF);

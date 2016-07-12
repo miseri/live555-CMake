@@ -24,7 +24,7 @@ BitVector.cpp
 ByteStreamFileSource.cpp
 ByteStreamMemoryBufferSource.cpp
 ByteStreamMultiFileSource.cpp
-DarwinInjector.cpp
+#DarwinInjector.cpp
 DeviceSource.cpp
 DigestAuthentication.cpp
 DVVideoFileServerMediaSubsession.cpp
@@ -37,6 +37,7 @@ FileSink.cpp
 FramedFileSource.cpp
 FramedFilter.cpp
 FramedSource.cpp
+GenericMediaServer.cpp
 GSMAudioRTPSink.cpp
 H261VideoRTPSource.cpp
 H263plusVideoFileServerMediaSubsession.cpp
@@ -162,6 +163,8 @@ VorbisAudioRTPSink.cpp
 VorbisAudioRTPSource.cpp
 VP8VideoRTPSink.cpp
 VP8VideoRTPSource.cpp
+VP9VideoRTPSink.cpp
+VP9VideoRTPSource.cpp
 WAVAudioFileServerMediaSubsession.cpp
 WAVAudioFileSource.cpp
 )
@@ -189,7 +192,7 @@ include/BitVector.hh
 include/ByteStreamFileSource.hh
 include/ByteStreamMemoryBufferSource.hh
 include/ByteStreamMultiFileSource.hh
-include/DarwinInjector.hh
+#include/DarwinInjector.hh
 include/DeviceSource.hh
 include/DigestAuthentication.hh
 include/DVVideoFileServerMediaSubsession.hh
@@ -201,6 +204,7 @@ include/FileSink.hh
 include/FramedFileSource.hh
 include/FramedFilter.hh
 include/FramedSource.hh
+include/GenericMediaServer.hh
 include/GSMAudioRTPSink.hh
 include/H261VideoRTPSource.hh
 include/H263plusVideoFileServerMediaSubsession.hh
@@ -313,6 +317,8 @@ include/VorbisAudioRTPSink.hh
 include/VorbisAudioRTPSource.hh
 include/VP8VideoRTPSink.hh
 include/VP8VideoRTPSource.hh
+include/VP9VideoRTPSink.hh
+include/VP9VideoRTPSource.hh
 include/WAVAudioFileServerMediaSubsession.hh
 include/WAVAudioFileSource.hh
 )
