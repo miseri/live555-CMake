@@ -240,6 +240,7 @@ include/Media.hh
 include/MediaSession.hh
 include/MediaSink.hh
 include/MediaSource.hh
+include/MediaTranscodingTable.hh
 include/MP3ADU.hh
 include/MP3ADUinterleaving.hh
 include/MP3ADURTPSink.hh
